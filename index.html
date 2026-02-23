@@ -26,13 +26,9 @@ button {
   color: white;
   margin-top:5px;
 }
-input, select {
+input {
   padding: 8px;
   margin-top: 5px;
-}
-.streak {
-  font-size: 14px;
-  color: #666;
 }
 </style>
 </head>
@@ -42,14 +38,8 @@ input, select {
 
 <div class="card">
   <input id="goalName" placeholder="目標名"><br>
-  <input id="goalLimit" type="number" placeholder="回数"><br>
-
-  <select id="goalType">
-    <option value="week">週に◯回まで</option>
-    <option value="month">月に◯回まで</option>
-    <option value="days">◯日に1回まで</option>
-  </select><br>
-
+  <input id="periodDays" type="number" placeholder="何日間で"><br>
+  <input id="limitCount" type="number" placeholder="何回まで"><br>
   <button onclick="addGoal()">目標追加</button>
 </div>
 
@@ -66,45 +56,23 @@ function today() {
   return new Date();
 }
 
-function formatDate(d) {
-  return d.toISOString().split("T")[0];
-}
-
-function getPeriodKey(goal) {
-  const now = today();
-
-  if (goal.type === "week") {
-    const first = new Date(now.getFullYear(), 0, 1);
-    const week = Math.floor((now - first) / (7 * 24 * 60 * 60 * 1000));
-    return "week-" + week;
-  }
-
-  if (goal.type === "month") {
-    return "month-" + now.getFullYear() + "-" + now.getMonth();
-  }
-
-  if (goal.type === "days") {
-    const start = new Date(goal.createdAt);
-    const diff = Math.floor((now - start) / (24*60*60*1000));
-    const block = Math.floor(diff / goal.limit);
-    return "block-" + block;
-  }
+function daysBetween(a,b) {
+  return Math.floor((a - b) / (24*60*60*1000));
 }
 
 function addGoal() {
   const name = document.getElementById("goalName").value;
-  const limit = parseInt(document.getElementById("goalLimit").value);
-  const type = document.getElementById("goalType").value;
+  const periodDays = parseInt(document.getElementById("periodDays").value);
+  const limitCount = parseInt(document.getElementById("limitCount").value);
 
-  if (!name || !limit) return;
+  if (!name || !periodDays || limitCount < 0) return;
 
   goals.push({
     name,
-    limit,
-    type,
-    history: {},
+    periodDays,
+    limitCount,
+    records: [],
     fails: 0,
-    streak: 0,
     createdAt: Date.now()
   });
 
@@ -114,14 +82,17 @@ function addGoal() {
 
 function checkGoal(index) {
   const goal = goals[index];
-  const key = getPeriodKey(goal);
+  const now = Date.now();
 
-  goal.history[key] = (goal.history[key] || 0) + 1;
+  goal.records.push(now);
 
-  if (goal.type === "days") {
-    if (goal.history[key] > 1) goal.fails++;
-  } else {
-    if (goal.history[key] > goal.limit) goal.fails++;
+  // 現在期間内の回数を計算
+  const validRecords = goal.records.filter(r =>
+    daysBetween(new Date(now), new Date(r)) < goal.periodDays
+  );
+
+  if (validRecords.length > goal.limitCount) {
+    goal.fails++;
   }
 
   if (goal.fails >= 3) {
@@ -132,24 +103,25 @@ function checkGoal(index) {
   render();
 }
 
+function getCurrentCount(goal) {
+  const now = Date.now();
+  return goal.records.filter(r =>
+    daysBetween(new Date(now), new Date(r)) < goal.periodDays
+  ).length;
+}
+
 function render() {
   const container = document.getElementById("goals");
   container.innerHTML = "";
 
   goals.forEach((g,i) => {
-    const key = getPeriodKey(g);
-    const count = g.history[key] || 0;
-
-    let label = "";
-    if (g.type === "week") label = "週";
-    if (g.type === "month") label = "月";
-    if (g.type === "days") label = g.limit + "日に1回";
+    const count = getCurrentCount(g);
 
     container.innerHTML += `
       <div class="card">
         <b>${g.name}</b><br>
-        制限：${label} / ${g.limit}回<br>
-        今期：${count}回<br>
+        制限：${g.periodDays}日で${g.limitCount}回まで<br>
+        現在期間内：${count}回<br>
         失敗：${g.fails}回<br>
         <button onclick="checkGoal(${i})">記録</button>
       </div>
