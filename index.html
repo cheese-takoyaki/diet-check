@@ -3,21 +3,47 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Diet Goal App</title>
+<title>Goal App</title>
 <style>
-body { font-family: sans-serif; padding:20px; background:#f5f5f5; }
-h1 { font-size:22px; }
-button { padding:10px; margin-top:5px; }
-.goal { background:white; padding:15px; margin-top:10px; border-radius:10px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont;
+  background: #f2f2f7;
+  padding: 20px;
+}
+h1 { font-size: 24px; }
+.card {
+  background: white;
+  padding: 15px;
+  margin-top: 15px;
+  border-radius: 15px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
+button {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: black;
+  color: white;
+}
+input {
+  padding: 8px;
+  margin-top: 5px;
+}
+.streak {
+  font-size: 14px;
+  color: #666;
+}
 </style>
 </head>
 <body>
 
-<h1>ダイエット目標管理</h1>
+<h1>Goal Tracker</h1>
 
-<input id="goalName" placeholder="目標名（例：スイーツ）">
-<input id="goalLimit" type="number" placeholder="週の回数">
-<button onclick="addGoal()">目標追加</button>
+<div class="card">
+  <input id="goalName" placeholder="目標名（例：スイーツ）"><br>
+  <input id="goalLimit" type="number" placeholder="週の回数"><br>
+  <button onclick="addGoal()">目標追加</button>
+</div>
 
 <div id="goals"></div>
 
@@ -28,20 +54,48 @@ function save() {
   localStorage.setItem("goals", JSON.stringify(goals));
 }
 
+function todayString() {
+  return new Date().toISOString().split("T")[0];
+}
+
 function addGoal() {
   const name = document.getElementById("goalName").value;
   const limit = parseInt(document.getElementById("goalLimit").value);
-  if(!name || !limit) return;
-  goals.push({name, limit, count:0, fails:0, start:Date.now()});
+  if (!name || !limit) return;
+
+  goals.push({
+    name,
+    limit,
+    history: {},
+    fails: 0,
+    streak: 0,
+    lastCheck: null
+  });
+
   save();
   render();
 }
 
 function checkGoal(index) {
-  goals[index].count++;
-  if(goals[index].count > goals[index].limit) {
-    goals[index].fails++;
+  const today = todayString();
+  const goal = goals[index];
+
+  goal.history[today] = (goal.history[today] || 0) + 1;
+
+  if (goal.history[today] > goal.limit) {
+    goal.fails++;
   }
+
+  if (goal.lastCheck !== today) {
+    goal.streak++;
+  }
+
+  goal.lastCheck = today;
+
+  if (goal.fails >= 3) {
+    goals.splice(index,1);
+  }
+
   save();
   render();
 }
@@ -49,14 +103,15 @@ function checkGoal(index) {
 function render() {
   const container = document.getElementById("goals");
   container.innerHTML = "";
-  goals = goals.filter(g => g.fails < 3);
+
   goals.forEach((g,i) => {
     container.innerHTML += `
-      <div class="goal">
+      <div class="card">
         <b>${g.name}</b><br>
         制限：週${g.limit}回<br>
-        今日の回数：${g.count}<br>
-        失敗回数：${g.fails}<br>
+        今日：${g.history[todayString()] || 0}回<br>
+        失敗：${g.fails}回<br>
+        <div class="streak">連続達成：${g.streak}日</div>
         <button onclick="checkGoal(${i})">食べた</button>
       </div>
     `;
@@ -65,15 +120,23 @@ function render() {
 
 render();
 
-if ("Notification" in window) {
-  Notification.requestPermission();
-  setInterval(() => {
-    const now = new Date();
-    if (now.getHours() === 21 && now.getMinutes() === 0) {
-      new Notification("今日の記録をチェック！");
-    }
-  }, 60000);
+function requestNotifyPermission() {
+  if ("Notification" in window) {
+    Notification.requestPermission();
+  }
 }
+
+document.body.addEventListener("click", requestNotifyPermission, { once: true });
+
+setInterval(() => {
+  const now = new Date();
+  if (now.getHours() === 21 && now.getMinutes() === 0) {
+    if (Notification.permission === "granted") {
+      new Notification("今日の目標チェックを忘れずに！");
+    }
+  }
+}, 60000);
+
 </script>
 
 </body>
