@@ -24,8 +24,9 @@ button {
   border: none;
   background: black;
   color: white;
+  margin-top:5px;
 }
-input {
+input, select {
   padding: 8px;
   margin-top: 5px;
 }
@@ -40,8 +41,15 @@ input {
 <h1>Goal Tracker</h1>
 
 <div class="card">
-  <input id="goalName" placeholder="目標名（例：スイーツ）"><br>
-  <input id="goalLimit" type="number" placeholder="週の回数"><br>
+  <input id="goalName" placeholder="目標名"><br>
+  <input id="goalLimit" type="number" placeholder="回数"><br>
+
+  <select id="goalType">
+    <option value="week">週に◯回まで</option>
+    <option value="month">月に◯回まで</option>
+    <option value="days">◯日に1回まで</option>
+  </select><br>
+
   <button onclick="addGoal()">目標追加</button>
 </div>
 
@@ -54,22 +62,50 @@ function save() {
   localStorage.setItem("goals", JSON.stringify(goals));
 }
 
-function todayString() {
-  return new Date().toISOString().split("T")[0];
+function today() {
+  return new Date();
+}
+
+function formatDate(d) {
+  return d.toISOString().split("T")[0];
+}
+
+function getPeriodKey(goal) {
+  const now = today();
+
+  if (goal.type === "week") {
+    const first = new Date(now.getFullYear(), 0, 1);
+    const week = Math.floor((now - first) / (7 * 24 * 60 * 60 * 1000));
+    return "week-" + week;
+  }
+
+  if (goal.type === "month") {
+    return "month-" + now.getFullYear() + "-" + now.getMonth();
+  }
+
+  if (goal.type === "days") {
+    const start = new Date(goal.createdAt);
+    const diff = Math.floor((now - start) / (24*60*60*1000));
+    const block = Math.floor(diff / goal.limit);
+    return "block-" + block;
+  }
 }
 
 function addGoal() {
   const name = document.getElementById("goalName").value;
   const limit = parseInt(document.getElementById("goalLimit").value);
+  const type = document.getElementById("goalType").value;
+
   if (!name || !limit) return;
 
   goals.push({
     name,
     limit,
+    type,
     history: {},
     fails: 0,
     streak: 0,
-    lastCheck: null
+    createdAt: Date.now()
   });
 
   save();
@@ -77,20 +113,16 @@ function addGoal() {
 }
 
 function checkGoal(index) {
-  const today = todayString();
   const goal = goals[index];
+  const key = getPeriodKey(goal);
 
-  goal.history[today] = (goal.history[today] || 0) + 1;
+  goal.history[key] = (goal.history[key] || 0) + 1;
 
-  if (goal.history[today] > goal.limit) {
-    goal.fails++;
+  if (goal.type === "days") {
+    if (goal.history[key] > 1) goal.fails++;
+  } else {
+    if (goal.history[key] > goal.limit) goal.fails++;
   }
-
-  if (goal.lastCheck !== today) {
-    goal.streak++;
-  }
-
-  goal.lastCheck = today;
 
   if (goal.fails >= 3) {
     goals.splice(index,1);
@@ -105,38 +137,27 @@ function render() {
   container.innerHTML = "";
 
   goals.forEach((g,i) => {
+    const key = getPeriodKey(g);
+    const count = g.history[key] || 0;
+
+    let label = "";
+    if (g.type === "week") label = "週";
+    if (g.type === "month") label = "月";
+    if (g.type === "days") label = g.limit + "日に1回";
+
     container.innerHTML += `
       <div class="card">
         <b>${g.name}</b><br>
-        制限：週${g.limit}回<br>
-        今日：${g.history[todayString()] || 0}回<br>
+        制限：${label} / ${g.limit}回<br>
+        今期：${count}回<br>
         失敗：${g.fails}回<br>
-        <div class="streak">連続達成：${g.streak}日</div>
-        <button onclick="checkGoal(${i})">食べた</button>
+        <button onclick="checkGoal(${i})">記録</button>
       </div>
     `;
   });
 }
 
 render();
-
-function requestNotifyPermission() {
-  if ("Notification" in window) {
-    Notification.requestPermission();
-  }
-}
-
-document.body.addEventListener("click", requestNotifyPermission, { once: true });
-
-setInterval(() => {
-  const now = new Date();
-  if (now.getHours() === 21 && now.getMinutes() === 0) {
-    if (Notification.permission === "granted") {
-      new Notification("今日の目標チェックを忘れずに！");
-    }
-  }
-}, 60000);
-
 </script>
 
 </body>
